@@ -4,7 +4,9 @@ from .. import backend as K
 
 
 class BatchNormalization(Layer):
-    '''Normalize the activations of the previous layer at each batch,
+    """Batch normalization layer (Ioffe and Szegedy, 2014).
+
+    Normalize the activations of the previous layer at each batch,
     i.e. applies a transformation that maintains the mean activation
     close to 0 and the activation standard deviation close to 1.
 
@@ -59,8 +61,9 @@ class BatchNormalization(Layer):
         Same shape as input.
 
     # References
-        - [Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift](http://jmlr.org/proceedings/papers/v37/ioffe15.pdf)
-    '''
+        - [Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
+    """
+
     def __init__(self, epsilon=1e-3, mode=0, axis=-1, momentum=0.99,
                  weights=None, beta_init='zero', gamma_init='one',
                  gamma_regularizer=None, beta_regularizer=None, **kwargs):
@@ -105,7 +108,7 @@ class BatchNormalization(Layer):
     def call(self, x, mask=None):
         if self.mode == 0 or self.mode == 2:
             assert self.built, 'Layer must be built before being called'
-            input_shape = self.input_spec[0].shape
+            input_shape = K.int_shape(x)
 
             reduction_axes = list(range(len(input_shape)))
             del reduction_axes[self.axis]

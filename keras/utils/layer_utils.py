@@ -1,14 +1,16 @@
 from __future__ import print_function
+import inspect
 
-from .generic_utils import get_from_module
+from .generic_utils import get_from_module, get_custom_objects
 from .np_utils import convert_kernel
 from ..layers import *
 from ..models import Model, Sequential
 from .. import backend as K
 
 
-def layer_from_config(config, custom_objects={}):
-    '''
+def layer_from_config(config, custom_objects=None):
+    """Instantiate a layer from a config dictionary.
+
     # Arguments
         config: dict of the form {'class_name': str, 'config': dict}
         custom_objects: dict mapping class names (or function names)
@@ -16,11 +18,11 @@ def layer_from_config(config, custom_objects={}):
 
     # Returns
         Layer instance (may be Model, Sequential, Layer...)
-    '''
+    """
     # Insert custom layers into globals so they can
     # be accessed by `get_from_module`.
-    for cls_key in custom_objects:
-        globals()[cls_key] = custom_objects[cls_key]
+    if custom_objects:
+        get_custom_objects().update(custom_objects)
 
     class_name = config['class_name']
 
@@ -31,19 +33,27 @@ def layer_from_config(config, custom_objects={}):
     else:
         layer_class = get_from_module(class_name, globals(), 'layer',
                                       instantiate=False)
-    return layer_class.from_config(config['config'])
+
+    arg_spec = inspect.getargspec(layer_class.from_config)
+    if 'custom_objects' in arg_spec.args:
+        return layer_class.from_config(config['config'],
+                                       custom_objects=custom_objects)
+    else:
+        return layer_class.from_config(config['config'])
 
 
 def print_summary(layers, relevant_nodes=None,
-                  line_length=100, positions=[.33, .55, .67, 1.]):
-    '''Prints a summary of a layer
+                  line_length=100, positions=None):
+    """Prints a summary of a layer.
 
     # Arguments
         layers: list of layers to print summaries of
         relevant_nodes: list of relevant nodes
         line_length: total length of printed lines
-        positions: relative or absolute positions of log elements in each line
-    '''
+        positions: relative or absolute positions of log elements in each line.
+            If not provided, defaults to `[.33, .55, .67, 1.]`.
+    """
+    positions = positions or [.33, .55, .67, 1.]
     if positions[-1] <= 1:
         positions = [int(line_length * p) for p in positions]
     # header names for the different log elements
@@ -64,9 +74,14 @@ def print_summary(layers, relevant_nodes=None,
     print('=' * line_length)
 
     def print_layer_summary(layer):
+        """Prints a summary for a single layer.
+
+        # Arguments
+            layer: target layer.
+        """
         try:
             output_shape = layer.output_shape
-        except:
+        except AttributeError:
             output_shape = 'multiple'
         connections = []
         for node_index, node in enumerate(layer.inbound_nodes):
@@ -110,6 +125,16 @@ def print_summary(layers, relevant_nodes=None,
 
 
 def count_total_params(layers, layer_set=None):
+    """Counts the number of parameters in a list of layers.
+
+    # Arguments
+        layers: list of layers.
+        layer_set: set of layers already seen
+            (so that we don't count their weights twice).
+
+    # Returns
+        A tuple (count of trainable weights, count of non-trainable weights.)
+    """
     if layer_set is None:
         layer_set = set()
     trainable_count = 0
@@ -118,7 +143,7 @@ def count_total_params(layers, layer_set=None):
         if layer in layer_set:
             continue
         layer_set.add(layer)
-        if type(layer) in (Model, Sequential):
+        if isinstance(layer, (Model, Sequential)):
             t, nt = count_total_params(layer.layers, layer_set)
             trainable_count += t
             non_trainable_count += nt
@@ -129,6 +154,13 @@ def count_total_params(layers, layer_set=None):
 
 
 def convert_all_kernels_in_model(model):
+    """Converts all convolution kernels in a model from Theano to TensorFlow.
+
+    Also works from TensorFlow to Theano.
+
+    # Arguments
+        model: target model for the conversion.
+    """
     # Note: SeparableConvolution not included
     # since only supported by TF.
     conv_classes = {
